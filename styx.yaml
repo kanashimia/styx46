@@ -1,0 +1,8 @@
+#Clients connect to us over IPv4
+listen: "0.0.0.0:53"
+#We connect upstream via any family
+upstreams:
+  - "[2620:fe::fe]:53"
+  - "9.9.9.9:53"
+#Legacy space we use
+legacy: "10.0.0.0/8"
