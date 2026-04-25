@@ -30,3 +30,7 @@ go.work.sum
 #temp files from test cases
 translator/styx.map
 translator/tayga.conf
+
+#binaries and conf files
+styx.yaml
+styx
