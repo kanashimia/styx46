@@ -2,6 +2,7 @@ package translator
 
 import (
     "fmt"
+    "log"
     "net"
 	"os"
     "os/exec"
@@ -49,7 +50,7 @@ func New(cidr string, binaryPath string) (*Translator, error) {
 	if err != nil {
         return nil, fmt.Errorf("failed to get config path: %w", err)
     }
-	fmt.Printf("Using %s as working directory\n",dir)
+	log.Printf("Using %s as working directory\n",dir)
 
     return &Translator{
 		pool:network,
@@ -68,12 +69,12 @@ func (t *Translator) Lookup(map6 net.IP) (net.IP, error) {
     for _, e := range t.entries {
         if e.map6.Equal(map6) {
 			//Already mapped, return the existing entry
-			fmt.Printf("Lookup for [%s] found entry [%s]\n",map6,e)
+			//log.Printf("Lookup for [%s] found entry [%s]\n",map6,e)
             e.updatedAt = time.Now()
             return e.map4, nil
         }
     }
-	fmt.Printf("Lookup for [%s] not found, allocating...\n",map6)
+	log.Printf("Lookup: [%s] not found, allocating...\n",map6)
 
 	//Find a new entry to allocate
     for ip := cloneIP(t.pool.IP); t.pool.Contains(ip); {
@@ -92,7 +93,7 @@ func (t *Translator) Lookup(map6 net.IP) (net.IP, error) {
                 updatedAt: time.Now(),
 				createdAt: time.Now(),
             }
-			fmt.Printf("Lookup for [%s] created entry [%s]\n",map6,e)
+			log.Printf("Lookup: created entry [%s] → [%s]\n",map6,e)
 			//add to the entries list
             t.entries = append(t.entries, e)
 			//update Tayga mapfile
@@ -145,7 +146,7 @@ func (t *Translator) Start(ctx context.Context) error {
     t.cmd.Stderr = os.Stderr
 
 	//start Tayga
-    fmt.Printf("starting tayga from: %q\n", t.binaryPath)
+    log.Printf("starting tayga from: %q\n", t.binaryPath)
     if err := t.cmd.Start(); err != nil {
         return fmt.Errorf("failed to start tayga: %w", err)
     }
@@ -155,7 +156,7 @@ func (t *Translator) Start(ctx context.Context) error {
     go func() {
         defer close(done)
         t.cmd.Wait() // blocks until process exits for any reason
-		fmt.Printf("Tayga exited on its own\n")
+		log.Printf("Tayga exited on its own\n")
 
     }()
 
@@ -231,7 +232,7 @@ func (t *Translator) writeMapfile() error {
 
 	//print every item in the entry table
     for _, e := range t.entries {
-		fmt.Printf("Writing mapfile line for [%s]\n",e)
+		//log.Printf("Writing mapfile line for [%s]\n",e)
         fmt.Fprintf(f, "map %s %s\n", e.map4, e.map6)
     }
 

@@ -3,6 +3,7 @@ package server
 import (
     "log"
     "net"
+	"strconv"
     "github.com/miekg/dns"
     "github.com/apalrd/styx46/config"
     "github.com/apalrd/styx46/resolver"
@@ -56,6 +57,23 @@ func (s *Server) handleRequest(w dns.ResponseWriter, req *dns.Msg) {
 	aFailed := err != nil || resp == nil || len(resp.Answer) == 0
     aaaaFailed := isA && aaaaErr != nil || aaaaResp == nil || len(aaaaResp.Answer) == 0
 
+	// convert query type to a string for later
+	qTypeStr := strconv.Itoa(int(q.Qtype))
+	switch q.Qtype {
+	case dns.TypeA: 
+		qTypeStr = "A"
+	case dns.TypeAAAA:
+		qTypeStr = "AAAA"
+	case dns.TypeCNAME:
+		qTypeStr = "CNAME"
+	case dns.TypeNS:
+		qTypeStr = "NS"
+	case dns.TypeSRV:
+		qTypeStr = "SRV"
+	case dns.TypePTR:
+		qTypeStr = "PTR"
+	}
+
     // get the ipv6 response (first one, if there are multiple)
 	var ipv6 net.IP
     if(!aaaaFailed) {
@@ -70,16 +88,13 @@ func (s *Server) handleRequest(w dns.ResponseWriter, req *dns.Msg) {
 
     //If original type was A and AAAA succeeded (do synthesis)
 	if isA && ipv6 != nil && (aFailed || s.config.PreferSynth) {
-		if s.config.Debug {
-			log.Printf("Synthesizing A for %s from AAAA %s", q.Name, ipv6.String())
-		}
 
         //ask the translator to translate this v6 address
 		ipv4, ipv4err := s.translator.Lookup(ipv6)
 		if ipv4err == nil && ipv4 != nil {
             //translator did not return an error
 			if s.config.Debug {
-				log.Printf("Synthesized IPv4: %s", ipv4.String())
+				log.Printf("Synthesized: [%s] from %s → %s", q.Name, ipv6.String(),ipv4.String())
 			}
 
             //return synthesized A result
@@ -105,7 +120,7 @@ func (s *Server) handleRequest(w dns.ResponseWriter, req *dns.Msg) {
     // If original query failed
 	if err != nil || resp == nil {
 		if s.config.Debug {
-			log.Printf("Query failed: %s (%d) → SERVFAIL", q.Name, q.Qtype)
+			log.Printf("Query failed: [%s] (%s) → SERVFAIL", q.Name, qTypeStr)
 		}
 
 		m := new(dns.Msg)
@@ -116,7 +131,7 @@ func (s *Server) handleRequest(w dns.ResponseWriter, req *dns.Msg) {
 
     // Else, return the query we got 	
     if s.config.Debug {
-		log.Printf("Query: %s (%d) → %d answers", q.Name, q.Qtype, len(resp.Answer))
+		log.Printf("Query passed: [%s] (%s) → %d answers", q.Name, qTypeStr, len(resp.Answer))
 	}
 
 	_ = w.WriteMsg(resp)
