@@ -20,7 +20,7 @@ func main() {
     }
 
     //new translator w/ tayga config
-    xlate, err := translator.New(cfg.Legacy, cfg.BinaryPath)
+    xlate, err := translator.New(cfg.Pool, cfg.BinaryPath)
     if err != nil {
         log.Fatalf("failed to start translator: %v", err)
     }

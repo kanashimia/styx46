@@ -4,6 +4,7 @@ import (
     "log"
     "net"
 	"strconv"
+	"strings"
     "github.com/miekg/dns"
     "github.com/apalrd/styx46/config"
     "github.com/apalrd/styx46/resolver"
@@ -45,7 +46,96 @@ func (s *Server) handleRequest(w dns.ResponseWriter, req *dns.Msg) {
 		}()
 	}
 
-    //Always forward the request upstream regardless of what it is
+	//If the request is reverse DNS (in-addr.arpa)
+	//and request IP is within the legacy mapping range
+	if q.Qtype == dns.TypePTR {
+		if ip:= ptrNameToIP(q.Name); ip != nil && s.config.Pool.Contains(ip) {
+			//translate this to IPv6
+        	ipv6, v6err := s.translator.LookupReverse(ip)
+			if ipv6 == nil || v6err != nil {
+				//No mapping, return NXDOMAIN		
+				if s.config.Debug {
+					log.Printf("Synyh PTR Failed: [%s] → NXDOMAIN", q.Name)
+				}
+
+				m := new(dns.Msg)
+				m.SetRcode(req, dns.RcodeNameError)
+				_ = w.WriteMsg(m)
+				return
+			}
+
+			//Now reverse that address into an ipv6 query
+			ip6Arpa, arpaErr := dns.ReverseAddr(ipv6.String())
+			if arpaErr != nil {
+				//idfk what happened here, return server failure		
+				if s.config.Debug {
+					log.Printf("Synyh PTR Failed: [%s] → SERVFAIL (%v) (reverse addr synth)", q.Name,arpaErr)
+				}
+
+				m := new(dns.Msg)
+				m.SetRcode(req, dns.RcodeServerFailure)
+				_ = w.WriteMsg(m)
+				return
+			}
+
+			//Perform PTR query to rdns from the AAAA
+			synthReq := new(dns.Msg)
+			synthReq.SetQuestion(ip6Arpa, dns.TypePTR)
+			synthResp, synthErr := s.resolver.Forward(synthReq)
+
+
+			//If we died from an error, return servfail 
+			if synthErr != nil {
+				//idfk what happened here, return server failure		
+				if s.config.Debug {
+					log.Printf("Synyh PTR Failed: [%s] → SERVFAIL (%v) (failed upstream)", q.Name,synthErr)
+				}
+
+				m := new(dns.Msg)
+				m.SetRcode(req, dns.RcodeServerFailure)
+				_ = w.WriteMsg(m)
+				return
+			}
+
+			//Got a response from the synth rdns query
+			if synthResp != nil && len(synthResp.Answer) > 0 {
+				//Generate a new response to the original query
+				msg := new(dns.Msg)
+				msg.SetReply(req)
+				for _, rr := range synthResp.Answer {
+					if ptr, ok := rr.(*dns.PTR); ok {
+						msg.Answer = append(msg.Answer, &dns.PTR{
+							Hdr: dns.RR_Header{
+								Name:   q.Name, // use original name, not new name
+								Rrtype: dns.TypePTR,
+								Class:  dns.ClassINET,
+								Ttl:    ptr.Hdr.Ttl,
+							},
+							Ptr: ptr.Ptr,
+						})
+					}
+				}
+				if s.config.Debug {
+					log.Printf("Synth PTR: [%s] → %d answers", q.Name, len(msg.Answer))
+				}
+				_ = w.WriteMsg(msg)
+				return
+			} 
+			
+			//general error, return nxdomain	
+			if s.config.Debug {
+				log.Printf("Synyh PTR Failed: [%s] → NXDOMAIN (query was questionable)", q.Name)
+			}
+
+			m := new(dns.Msg)
+			m.SetRcode(req, dns.RcodeNameError)
+			_ = w.WriteMsg(m)
+			return
+
+		}
+	}
+
+    //Forward the original request upstream
     resp, err := s.resolver.Forward(req)
 
 	// wait for AAAA if we launched it
@@ -149,4 +239,30 @@ func (s *Server) ListenAndServe() error {
 
     log.Printf("DNS server listening on %s", s.config.Listen)
     return server.ListenAndServe()
+}
+
+// ptrNameToIP parses an in-addr.arpa. name into a net.IP.
+// e.g. "1.2.0.192.in-addr.arpa." → 192.0.2.1
+// Returns nil if the name is not a valid IPv4 reverse DNS name.
+func ptrNameToIP(name string) net.IP {
+    const suffix = ".in-addr.arpa."
+    if !strings.HasSuffix(name, suffix) {
+        return nil
+    }
+    // strip suffix, split the reversed octets
+    trimmed := strings.TrimSuffix(name, suffix)
+    parts := strings.Split(trimmed, ".")
+    if len(parts) != 4 {
+        return nil
+    }
+    // reverse the labels to get the correct octet order
+    octets := make([]string, 4)
+    for i, p := range parts {
+        octets[3-i] = p
+    }
+    ip := net.ParseIP(strings.Join(octets, "."))
+    if ip == nil {
+        return nil
+    }
+    return ip.To4()
 }

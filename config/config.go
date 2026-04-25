@@ -2,6 +2,8 @@ package config
 
 import (
     "os"
+    "fmt"
+    "net"
     "gopkg.in/yaml.v3"
 )
 
@@ -13,6 +15,7 @@ type Config struct {
 	PreferSynth	bool	 `yaml:"prefer_synth"` // Prefer to synthesize addresses if AAAA records are available
 	Pref64		string	 `yaml:"pref64"` 	 // Pref64 for the PLAT
     Debug       bool     `yaml:"debug"`      // Debug-level query logging
+    Pool        *net.IPNet                   // decoded from Legacy
 }
 
 func Load(path string) (*Config, error) {
@@ -26,5 +29,15 @@ func Load(path string) (*Config, error) {
     if err := yaml.NewDecoder(f).Decode(&cfg); err != nil {
         return nil, err
     }
+
+    //validate ip net
+    ip, network, err := net.ParseCIDR(cfg.Legacy)
+    if err != nil {
+        return nil, fmt.Errorf("invalid CIDR: %w", err)
+    }
+    if ip.Equal(network.IP) == false {
+        return nil, fmt.Errorf("CIDR must be a network address, not a host address")
+    }
+    cfg.Pool = network
     return &cfg, nil
 }

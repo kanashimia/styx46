@@ -36,15 +36,7 @@ func (e *Entry) String() string {
 }
 
 // new Translator
-func New(cidr string, binaryPath string) (*Translator, error) {
-    ip, network, err := net.ParseCIDR(cidr)
-    if err != nil {
-        return nil, fmt.Errorf("invalid CIDR: %w", err)
-    }
-    if ip.Equal(network.IP) == false {
-        return nil, fmt.Errorf("CIDR must be a network address, not a host address")
-    }
-
+func New(pool *net.IPNet, binaryPath string) (*Translator, error) {
 	//Determine the config directory
 	dir, err := configPath()
 	if err != nil {
@@ -53,13 +45,13 @@ func New(cidr string, binaryPath string) (*Translator, error) {
 	log.Printf("Using %s as working directory\n",dir)
 
     return &Translator{
-		pool:network,
+		pool:pool,
 		binaryPath:binaryPath,
 		configPath:dir,
 	}, nil
 }
 
-// Lookup translation entry and return the corresponding Map4 entry
+// Lookup translation entry by Map6 and return the corresponding Map4 entry
 func (t *Translator) Lookup(map6 net.IP) (net.IP, error) {
 	//Lock mutex for safety
     t.mu.Lock()
@@ -119,6 +111,24 @@ func (t *Translator) Lookup(map6 net.IP) (net.IP, error) {
     }
 
     return nil, fmt.Errorf("pool exhausted")
+}
+
+// Lookup translation entry by Map4 and return the corresponding Map6 entry
+// aka reverse lookup
+// Returns error if there is no mapping, a map is not created
+func (t *Translator) LookupReverse(map4 net.IP) (net.IP, error) {
+	//Lock mutex for safety
+    t.mu.Lock()
+    defer t.mu.Unlock()
+
+	//Search list for this map6 entry
+    for _, e := range t.entries {
+        if e.map4.Equal(map4) {
+			//return the existing entry
+            return e.map6, nil
+        }
+    }
+    return nil, fmt.Errorf("not found")
 }
 
 func cloneIP(ip net.IP) net.IP {
