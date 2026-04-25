@@ -140,20 +140,34 @@ func (t *Translator) Start(ctx context.Context) error {
     }
 
 	//Create command context
-    t.cmd = exec.CommandContext(ctx, t.binaryPath)
+    t.cmd = exec.CommandContext(ctx, t.binaryPath, "-c", filepath.Join(t.configPath, "tayga.conf"),"-d")
     t.cmd.Stdout = os.Stdout
     t.cmd.Stderr = os.Stderr
 
 	//start Tayga
+    fmt.Printf("starting tayga from: %q\n", t.binaryPath)
     if err := t.cmd.Start(); err != nil {
         return fmt.Errorf("failed to start tayga: %w", err)
     }
 
-	//async func to terminate tayga when we terminate
+    // reap the child, regardless of how it exits.
+    done := make(chan struct{})
     go func() {
-        <-ctx.Done()
-        t.cmd.Process.Signal(syscall.SIGTERM)
-        t.cmd.Wait()
+        defer close(done)
+        t.cmd.Wait() // blocks until process exits for any reason
+		fmt.Printf("Tayga exited on its own\n")
+
+    }()
+
+    //  handle graceful shutdown on context cancellation.
+    go func() {
+        select {
+        case <-ctx.Done():
+            t.cmd.Process.Signal(syscall.SIGTERM)
+            <-done // wait for the reaper goroutine to finish
+        case <-done:
+            // process already exited on its own, nothing to do
+        }
     }()
 
     return nil
@@ -179,6 +193,7 @@ func (t *Translator) writeConfig() error {
 	//to take this from the config file
 	fmt.Fprintf(f,"tun-device styx46\n")
 	fmt.Fprintf(f,"ipv4-addr 192.0.0.8\n")
+	fmt.Fprintf(f,"ipv6-addr 2001:99a:390:2800::470\n")
 	//TODO get pref64
 	fmt.Fprintf(f,"prefix %s\n","64:ff9b::/96")
 	fmt.Fprintf(f,"wkpf-strict no\n")
@@ -190,7 +205,8 @@ func (t *Translator) writeConfig() error {
 	//todo fix these
 	fmt.Fprintf(f,"tun-route 0.0.0.0/0\n")
 	//todo we also need to do routing for this
-	fmt.Fprintf(f,"tun-route 2001:99a:390:2800::4646/128\n")
+	fmt.Fprintf(f,"tun-route 2001:99a:390:2800::460/123\n")
+    fmt.Fprintf(f,"map 192.168.55.0/28 2001:99a:390:2800::460/124\n")
 
     if err := f.Close(); err != nil {
         os.Remove(tmpPath)
