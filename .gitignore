@@ -34,3 +34,5 @@ translator/tayga.conf
 #binaries and conf files
 styx.yaml
 styx
+tayga.conf
+styx.map
