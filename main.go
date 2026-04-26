@@ -19,8 +19,13 @@ func main() {
         log.Fatalf("failed to load config: %v", err)
     }
 
+    //setup routing
+    if err := translator.Router(cfg); err != nil {
+        log.Fatalf("failed to setup routes: %v", err)
+    }
+
     //new translator w/ tayga config
-    xlate, err := translator.New(cfg.Pool, cfg.BinaryPath)
+    xlate, err := translator.New(cfg)
     if err != nil {
         log.Fatalf("failed to start translator: %v", err)
     }

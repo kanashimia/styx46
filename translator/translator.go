@@ -11,7 +11,7 @@ import (
 	"time"
 	"context"
 	"path/filepath"
-//	"github.com/apalrd/styx46/config"
+	"github.com/apalrd/styx46/config"
 )
 
 type Entry struct {
@@ -22,6 +22,7 @@ type Entry struct {
 }
 
 type Translator struct {
+    cfg     *config.Config
     mu      sync.RWMutex
     pool	*net.IPNet
     entries []*Entry
@@ -36,7 +37,7 @@ func (e *Entry) String() string {
 }
 
 // new Translator
-func New(pool *net.IPNet, binaryPath string) (*Translator, error) {
+func New(cfg *config.Config) (*Translator, error) {
 	//Determine the config directory
 	dir, err := configPath()
 	if err != nil {
@@ -45,8 +46,9 @@ func New(pool *net.IPNet, binaryPath string) (*Translator, error) {
 	log.Printf("Using %s as working directory\n",dir)
 
     return &Translator{
-		pool:pool,
-		binaryPath:binaryPath,
+        cfg:cfg,
+		pool:cfg.Pool,
+		binaryPath:cfg.BinaryPath,
 		configPath:dir,
 	}, nil
 }
@@ -204,20 +206,25 @@ func (t *Translator) writeConfig() error {
 	//to take this from the config file
 	fmt.Fprintf(f,"tun-device styx46\n")
 	fmt.Fprintf(f,"ipv4-addr 192.0.0.8\n")
-	fmt.Fprintf(f,"ipv6-addr 2001:99a:390:2800::470\n")
-	//TODO get pref64
-	fmt.Fprintf(f,"prefix %s\n","64:ff9b::/96")
+    //tayga's own IP + a route to it
+    if len(t.cfg.IfUp.TaygaIP) > 0 {
+	    fmt.Fprintf(f,"ipv6-addr %s\n",t.cfg.IfUp.TaygaIP)
+        fmt.Fprintf(f,"tun-route %s/128\n",t.cfg.IfUp.TaygaIP)
+    }
+	fmt.Fprintf(f,"prefix %s\n",t.cfg.Pref64)
 	fmt.Fprintf(f,"wkpf-strict no\n")
 	fmt.Fprintf(f,"data-dir %s\n",t.configPath)
 	fmt.Fprintf(f,"udp-cksum-mode fwd\n")
 	fmt.Fprintf(f,"log drop reject icmp self dyn\n")
 	fmt.Fprintf(f,"map-file styx.map\n")
 	fmt.Fprintf(f,"tun-up yes\n")
-	//todo fix these
+	//become the ipv4 default route
 	fmt.Fprintf(f,"tun-route 0.0.0.0/0\n")
-	//todo we also need to do routing for this
-	fmt.Fprintf(f,"tun-route 2001:99a:390:2800::460/123\n")
-    fmt.Fprintf(f,"map 192.168.55.0/28 2001:99a:390:2800::460/124\n")
+    //add a route for each v4 mapping entry
+	for _, down := range t.cfg.IfDowns {
+        fmt.Fprintf(f,"map %s %s\n",down.Map4,down.Map6)
+        fmt.Fprintf(f,"tun-route  %s\n",down.Map6)
+    }
 
     if err := f.Close(); err != nil {
         os.Remove(tmpPath)

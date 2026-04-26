@@ -7,6 +7,18 @@ import (
     "gopkg.in/yaml.v3"
 )
 
+type DownstreamIf struct {
+    Name string `yaml:"name"`
+    Map4 string `yaml:"map4"`
+    Map6 string `yaml:"map6"`
+}
+
+type UpstreamIf struct {
+    Name    string `yaml:"name"`
+    ProxyND bool   `yaml:"proxy_nd"`
+    TaygaIP string `yaml:"tayga_ip"`
+}
+
 type Config struct {
     Listen    	string   `yaml:"listen"`     // clients connect to us e.g. "0.0.0.0:53"
     Upstreams 	[]string `yaml:"upstreams"`  // we connect upstream e.g. ["[2620:fe::fe]:53", "9.9.9.9:53"]
@@ -16,6 +28,8 @@ type Config struct {
 	Pref64		string	 `yaml:"pref64"` 	 // Pref64 for the PLAT
     Debug       bool     `yaml:"debug"`      // Debug-level query logging
     Pool        *net.IPNet                   // decoded from Legacy
+    IfUp        UpstreamIf  `yaml:"iface_upstream"`    // interface name for upstream traffic (if defined, will do proxy-ndp)
+    IfDowns     []DownstreamIf `yaml:"iface_downstream"` // downstream interfaces
 }
 
 func Load(path string) (*Config, error) {
