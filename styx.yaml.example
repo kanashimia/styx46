@@ -3,4 +3,30 @@ listen: "0.0.0.0:53"
 #We connect upstream via any family
 upstreams:
   - "[2620:fe::fe]:53"
-  - "9.9.9.9:53"
+#Legacy space we use
+legacy: "10.0.0.0/8"
+#prefer synthesized address when AAAA is available
+#otherwise, only synthesize when A is not available but AAAA is
+prefer_synth: true
+#path to tayga binary (defaults to `tayga`, searching PATH)
+binary_path: "/usr/local/sbin/tayga"
+#pref64 for ipv4-only servers
+pref64: "64:ff9b::/96"
+#enable debug level logging
+debug: true
+#upstream interface
+#used to configure tayga's own IP, and proxy NDP
+iface_upstream:
+  name: "eth0"
+  proxy_nd: true
+  tayga_ip: "2001:db8:46::69"
+#downstream interfaces
+#used to configure tayga maps + proxy ND
+iface_downstream:
+    #for each downstream, the name, ipv4 cidr, and mapping ipv6 cidr
+  - name: "eth1"
+    map4: "192.168.46.0/24"
+    map6: "2001:db8:46::4600/120"
+  - name: "eth2"
+    map4: "192.168.67.0/28"
+    map6: "2001:db8:46::6700/124"
