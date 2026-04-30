@@ -26,7 +26,7 @@ The cursed river that helps your IPv4-only clients exit the underworld to the IP
 ## Installation
 You need the latest `main` of `tayga` as well as this repository.
 
-Instructions on Debian:
+Instructions on Debian (you may need sudo, idk):
 ```sh
 #install dependencies
 apt install git golang-go build-essential
@@ -48,7 +48,7 @@ cp styx.yaml.example styx.yaml
 ./styx
 ```
 
-`styx` assumes that IPv6 connectivity is already working, including nat64 (default prefix is `64:ff9b::/96`). nat64 is not strictly needed if all of your desired services support IPv6 already. `styx` will enable IP forwarding, and proxy ND for each of the addresses behind the CLAT. This may disable accept_ra depending on your distribution, in which case you may need to re-enable it: `echo "2" > /proc/sys/net/ipv6/conf/eth0/accept_ra` (if your upstream connectivity is via `eth0`)
+`styx` assumes that IPv6 connectivity is already working, possibly including nat64 (default prefix is `64:ff9b::/96`). nat64 is not strictly needed if all of your desired services support IPv6 already. You must have an IPv6 default gateway and must *not* have an IPv4 default gateway (`styx` will become the local gateway). `styx` will enable IP forwarding, and proxy ND for each of the addresses behind the CLAT. This may disable `accept_ra` depending on your distribution, in which case you may need to re-enable it: `echo "2" > /proc/sys/net/ipv6/conf/eth0/accept_ra` (if your upstream connectivity is via `eth0`).
 
 
 ### disclaimer: this was made in two days and only tested by doing apt update + apt upgrade, and pinging google. I have never tested it with more than ~5 mapping entries at once. You should not trust styx in a production network
